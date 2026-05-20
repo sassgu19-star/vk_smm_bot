@@ -7,33 +7,35 @@ import threading
 from datetime import datetime
 import requests
 import vk_api
-from vk_api.longpoll import VkLongPoll, VkEventType
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.upload import VkUpload
 from flask import Flask
 
 # === ДИАГНОСТИКА ===
 sys.stderr = sys.stdout
-print("=== BOT STARTUP ===", flush=True)
+print("=== BOT STARTUP (with bot_longpoll and OWNER_ID) ===", flush=True)
 print(f"Python {sys.version}", flush=True)
-print(f"CWD: {os.getcwd()}", flush=True)
 
 # === FLASK ===
 app = Flask(__name__)
+
 @app.route('/health')
 def health():
     return "OK", 200
+
 def run_web_server():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
 # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 VK_GROUP_TOKEN = os.getenv("VK_GROUP_TOKEN")
-OWNER_ID = "93399226"
+OWNER_ID = 93399226  # <--- ЗАМЕНИТЕ НА ВАШ ЧИСЛОВОЙ ID ВЛАДЕЛЬЦА
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEXGPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 print(f"VK_TOKEN set: {bool(VK_GROUP_TOKEN)}", flush=True)
+print(f"OWNER_ID: {OWNER_ID}", flush=True)
 print(f"YANDEX_API_KEY set: {bool(YANDEX_API_KEY)}", flush=True)
 print(f"YANDEX_FOLDER_ID set: {bool(YANDEX_FOLDER_ID)}", flush=True)
 
@@ -41,8 +43,8 @@ if not VK_GROUP_TOKEN:
     print("ERROR: VK_GROUP_TOKEN not set", flush=True)
     sys.exit(1)
 
-# === ID СООБЩЕСТВА (укажите свой) ===
-GROUP_ID = 231341755  # <--- ЗАМЕНИТЕ НА ВАШ ID СООБЩЕСТВА
+# === ID СООБЩЕСТВА ===
+GROUP_ID = 231341755
 
 # === НАСТРОЙКИ ===
 DATA_FILE = os.path.join("data", "bot_data.json")
@@ -103,7 +105,7 @@ def upload_photo_to_vk(vk, image_path, for_wall=True):
 def send_for_moderation(post_text, image_path, vk_session):
     attachment = upload_photo_to_vk(vk_session, image_path, for_wall=False)
     vk_session.method("messages.send", {
-        "user_id": OWNER_SCREEN_NAME,
+        "user_id": OWNER_ID,
         "message": f"✍️ Новый пост:\n\n{post_text}\n\nОтветьте «опубликовать» или «отклонить»:",
         "attachment": attachment,
         "random_id": 0
@@ -121,18 +123,19 @@ def publish_post(post_text, image_path, vk_session):
     print(f"✅ Пост опубликован в {datetime.now()}", flush=True)
 
 def handle_messages(vk_session):
-    longpoll = VkLongPoll(vk_session)
+    longpoll = VkBotLongPoll(vk_session, GROUP_ID)
     data = load_data()
-    print("LongPoll запущен, ожидание сообщений...", flush=True)
+    print(f"LongPoll запущен, ожидание сообщений...", flush=True)
+
     for event in longpoll.listen():
-        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-            # Получаем короткое имя отправителя
-            try:
-            if event.user_id != OWNER_ID:
-            continue # игнорируем других пользователей
-            msg = event.text.strip()
-            print(f"Получено сообщение от {event.user_id}: {msg}", flush=True)
-            # Обработка команд (упрощённая версия, но полная логика)
+        if event.type == VkBotEventType.MESSAGE_NEW:
+            if event.obj.from_id != OWNER_ID:
+                continue
+            msg = event.obj.message['text'].strip()
+            peer_id = event.obj.message['peer_id']
+            print(f"Получено сообщение от {event.obj.from_id}: {msg}", flush=True)
+
+            # Обработка команд
             if msg.startswith("/set_time"):
                 parts = msg.split()
                 if len(parts) >= 2:
@@ -145,7 +148,7 @@ def handle_messages(vk_session):
                         reply = "❌ Неверный формат. Используйте /set_time 09:00"
                 else:
                     reply = "❌ Укажите время, например /set_time 15:30"
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": reply, "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": reply, "random_id": 0})
             elif msg.startswith("/add"):
                 try:
                     parts = msg[5:].split(":", 1)
@@ -157,7 +160,7 @@ def handle_messages(vk_session):
                     reply = f"✅ Добавлена тема на {date_str}:\n{topic}"
                 except Exception:
                     reply = "❌ Ошибка. Используйте формат:\n/add 2025-06-20: описание темы"
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": reply, "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": reply, "random_id": 0})
             elif msg.startswith("/remove"):
                 parts = msg.split()
                 if len(parts) >= 2:
@@ -170,7 +173,7 @@ def handle_messages(vk_session):
                         reply = f"❌ На {date_str} нет запланированной темы"
                 else:
                     reply = "❌ Укажите дату: /remove 2025-06-20"
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": reply, "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": reply, "random_id": 0})
             elif msg == "/list":
                 if not data["schedule"]:
                     reply = "📭 Нет запланированных тем. Добавьте командой /add"
@@ -179,7 +182,7 @@ def handle_messages(vk_session):
                     for date, topic in sorted(data["schedule"].items()):
                         lines.append(f"{date}: {topic}")
                     reply = "\n".join(lines)
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": reply, "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": reply, "random_id": 0})
             elif msg.lower() == "опубликовать" and data.get("pending_post"):
                 pending = data["pending_post"]
                 publish_post(pending["text"], pending["image_path"], vk_session)
@@ -188,11 +191,11 @@ def handle_messages(vk_session):
                     del data["schedule"][today_str]
                 data["pending_post"] = None
                 save_data(data)
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": "✅ Пост опубликован!", "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": "✅ Пост опубликован!", "random_id": 0})
             elif msg.lower() == "отклонить" and data.get("pending_post"):
                 data["pending_post"] = None
                 save_data(data)
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": "❌ Пост отклонён.", "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": "❌ Пост отклонён.", "random_id": 0})
             elif msg == "/help":
                 help_text = """Доступные команды:
 /set_time HH:MM – задать время ежедневной публикации
@@ -202,24 +205,19 @@ def handle_messages(vk_session):
 /help – эта справка
 
 Когда наступает заданное время, бот берёт тему на сегодня, генерирует пост + картинку, присылает вам на проверку. Вы отвечаете «опубликовать» или «отклонить»."""
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": help_text, "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": help_text, "random_id": 0})
             else:
-                vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": "❓ Неизвестная команда. Напишите /help", "random_id": 0})
+                vk_session.method("messages.send", {"user_id": OWNER_ID, "message": "❓ Неизвестная команда. Напишите /help", "random_id": 0})
 
 def main():
     print("main: старт", flush=True)
     vk_session = vk_api.VkApi(token=VK_GROUP_TOKEN)
     vk = vk_session.get_api()
     print("main: API получен", flush=True)
-    # Проверяем, что токен работает
-    try:
-        # Простой вызов для проверки токена
-        vk.groups.getById(group_id=GROUP_ID)
-        print(f"main: токен валиден, группа {GROUP_ID}", flush=True)
-    except Exception as e:
-        print(f"main: ошибка токена: {e}", flush=True)
-        sys.exit(1)
-    print(f"Бот запущен, владелец: {OWNER_SCREEN_NAME}", flush=True)
+
+    print(f"main: токен валиден, группа {GROUP_ID}", flush=True)
+    print(f"Бот запущен, владелец: {OWNER_ID}", flush=True)
+
     # Запускаем поток для расписания
     def schedule_loop():
         while True:
@@ -235,7 +233,7 @@ def main():
                     print(f"Генерация поста на тему: {topic}", flush=True)
                     post_text = generate_post_text(topic)
                     if post_text.startswith("⚠️"):
-                        vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": f"Ошибка: {post_text}", "random_id": 0})
+                        vk_session.method("messages.send", {"user_id": OWNER_ID, "message": f"Ошибка: {post_text}", "random_id": 0})
                         continue
                     img = generate_image(topic)
                     if img:
@@ -243,11 +241,12 @@ def main():
                         data["pending_post"] = {"text": post_text, "image_path": img, "topic": topic}
                         save_data(data)
                     else:
-                        vk_session.method("messages.send", {"user_id": OWNER_SCREEN_NAME, "message": "⚠️ Картинка не создана", "random_id": 0})
+                        vk_session.method("messages.send", {"user_id": OWNER_ID, "message": "⚠️ Картинка не создана", "random_id": 0})
             except Exception as e:
                 print(f"Ошибка в расписании: {e}", flush=True)
             time.sleep(60)
     threading.Thread(target=schedule_loop, daemon=True).start()
+
     # Обработка сообщений (главный поток)
     handle_messages(vk_session)
 
