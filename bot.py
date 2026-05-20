@@ -28,7 +28,7 @@ def run_web_server():
 
 # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 VK_GROUP_TOKEN = os.getenv("VK_GROUP_TOKEN")
-OWNER_SCREEN_NAME = "93399226"
+OWNER_ID = "93399226"
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEXGPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
@@ -128,12 +128,8 @@ def handle_messages(vk_session):
         if event.type == VkEventType.MESSAGE_NEW and event.to_me:
             # Получаем короткое имя отправителя
             try:
-                user_info = vk_session.method("users.get", {"user_ids": event.user_id})
-                screen_name = user_info[0].get("screen_name", "") if user_info else ""
-            except:
-                screen_name = ""
-            if screen_name != OWNER_SCREEN_NAME:
-                continue  # игнорируем других пользователей
+            if event.user_id != OWNER_ID:
+            continue # игнорируем других пользователей
             msg = event.text.strip()
             print(f"Получено сообщение от {event.user_id}: {msg}", flush=True)
             # Обработка команд (упрощённая версия, но полная логика)
