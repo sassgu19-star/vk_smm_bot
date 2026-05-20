@@ -28,7 +28,7 @@ def run_web_server():
 
 # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 VK_GROUP_TOKEN = os.getenv("VK_GROUP_TOKEN")
-OWNER_SCREEN_NAME = "denchik93"
+OWNER_SCREEN_NAME = "93399226"
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEXGPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
